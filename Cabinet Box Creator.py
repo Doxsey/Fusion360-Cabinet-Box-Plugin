@@ -294,14 +294,24 @@ def build_cabinet(
     feat_left_panel = extrudes.add(left_panel_ext_input)
     feat_left_panel.bodies.item(0).name = "Left Panel"
 
+    # ------------------------------------------------------------------
+    # RIGHT SIDE  (mirror of left across cabinet centerline)
+    # ------------------------------------------------------------------
+    planes = comp.constructionPlanes
+    plane_input = planes.createInput()
+    plane_input.setByOffset(
+        comp.yZConstructionPlane,
+        adsk.core.ValueInput.createByReal(WIDTH / 2),
+    )
+    mirror_plane = planes.add(plane_input)
+    mirror_plane.name = "Cabinet Centerline"
 
-    # # ------------------------------------------------------------------
-    # # RIGHT SIDE  (x = W-THICKNESS, full height, full depth)
-    # # ------------------------------------------------------------------
-    # x0 = WIDTH-(FF_OVERLAP*2)-(THICKNESS*2)
-    # sk_r = sketch_rect_xy(sketches, xy_plane, x0, 0+FF_THICK, x0+THICKNESS+FF_OVERLAP, DEPTH)
-    # feat_r = extrude_profile(extrudes, sk_r.profiles.item(0), H)
-    # feat_r.bodies.item(0).name = "Right Side"
+    mirror_bodies = adsk.core.ObjectCollection.create()
+    mirror_bodies.add(feat_left_panel.bodies.item(0))
+
+    mirror_input = comp.features.mirrorFeatures.createInput(mirror_bodies, mirror_plane)
+    feat_right_panel = comp.features.mirrorFeatures.add(mirror_input)
+    feat_right_panel.bodies.item(0).name = "Right Panel"
  
     # ------------------------------------------------------------------
     # BOTTOM PANEL  (sits between sides, flush with bottom)
