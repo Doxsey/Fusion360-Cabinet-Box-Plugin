@@ -222,59 +222,62 @@ def build_cabinet(
     feat_ff_right_style.bodies.item(0).name = "Right Style"
 
     # ------------------------------------------------------------------
-    # FACEFRAME - BOTTOM RAIL
+    # FACEFRAME - TOP & BOTTOM RAILS (one sketch, one extrude, two bodies)
     # ------------------------------------------------------------------
     left_style = feat_ff_left_style.bodies.item(0)
     left_style_inner_face = find_face_by_normal(left_style, 1, 0, 0)
-    bot_rail_sketch = sketches.add(left_style_inner_face)
-    min_pt, max_pt = get_face_sketch_bounds(bot_rail_sketch, left_style_inner_face)
+    right_style = feat_ff_right_style.bodies.item(0)
+    right_style_inner_face = find_face_by_normal(right_style, -1, 0, 0)
 
-    lines = bot_rail_sketch.sketchCurves.sketchLines
-    lines.addTwoPointRectangle(
+    rails_sketch = sketches.add(left_style_inner_face)
+    min_pt, max_pt = get_face_sketch_bounds(rails_sketch, left_style_inner_face)
+
+    rails_lines = rails_sketch.sketchCurves.sketchLines
+    # Bottom rail
+    rails_lines.addTwoPointRectangle(
         adsk.core.Point3D.create(min_pt.x, min_pt.y, 0),
         adsk.core.Point3D.create(max_pt.x, min_pt.y + FF_WIDTH, 0),
     )
-
-    right_style = feat_ff_right_style.bodies.item(0)
-    right_style_inner_face = find_face_by_normal(right_style, -1, 0, 0)
-    bot_rail_prof = bot_rail_sketch.profiles.item(0)
-    bot_rail_ext_input = extrudes.createInput(
-        bot_rail_prof,
-        adsk.fusion.FeatureOperations.NewBodyFeatureOperation
-    )
-    bot_rail_ext_input.setOneSideToExtent(right_style_inner_face, False)
-
-    feat_bot_rail = extrudes.add(bot_rail_ext_input)
-    feat_bot_rail.bodies.item(0).name = "Bottom Rail"
-
-    # ------------------------------------------------------------------
-    # FACEFRAME - TOP RAIL
-    # ------------------------------------------------------------------
-    top_rail_sketch = sketches.add(left_style_inner_face)
-    min_pt, max_pt = get_face_sketch_bounds(top_rail_sketch, left_style_inner_face)
-    lines = top_rail_sketch.sketchCurves.sketchLines
-    lines.addTwoPointRectangle(
+    # Top rail
+    rails_lines.addTwoPointRectangle(
         adsk.core.Point3D.create(min_pt.x, max_pt.y - FF_WIDTH, 0),
         adsk.core.Point3D.create(max_pt.x, max_pt.y, 0),
     )
 
-    # Pick the profile whose centroid Y is highest (closest to top of face)
+    # The sketch also contains the face's projected edges. Pick the two rail
+    # profiles by centroid Y: lowest = bottom rail, highest = top rail.
+    bot_rail_prof = None
     top_rail_prof = None
+    lowest_y = float('inf')
     highest_y = -float('inf')
-    for i in range(top_rail_sketch.profiles.count):
-        prof = top_rail_sketch.profiles.item(i)
-        centroid = prof.areaProperties().centroid
-        if centroid.y > highest_y:
-            highest_y = centroid.y
+    for i in range(rails_sketch.profiles.count):
+        prof = rails_sketch.profiles.item(i)
+        cy = prof.areaProperties().centroid.y
+        if cy < lowest_y:
+            lowest_y = cy
+            bot_rail_prof = prof
+        if cy > highest_y:
+            highest_y = cy
             top_rail_prof = prof
 
-    top_rail_ext_input = extrudes.createInput(
-        top_rail_prof,
-        adsk.fusion.FeatureOperations.NewBodyFeatureOperation
+    rail_profs = adsk.core.ObjectCollection.create()
+    rail_profs.add(bot_rail_prof)
+    rail_profs.add(top_rail_prof)
+
+    rails_ext_input = extrudes.createInput(
+        rail_profs,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
     )
-    top_rail_ext_input.setOneSideToExtent(right_style_inner_face, False)
-    feat_top_rail = extrudes.add(top_rail_ext_input)
-    feat_top_rail.bodies.item(0).name = "Top Rail"
+    rails_ext_input.setOneSideToExtent(right_style_inner_face, False)
+    feat_rails = extrudes.add(rails_ext_input)
+
+    # Name the two resulting bodies by centroid Z (model space): lower = bottom rail
+    rail_bodies = sorted(
+        (feat_rails.bodies.item(i) for i in range(feat_rails.bodies.count)),
+        key=lambda b: b.physicalProperties.centerOfMass.z,
+    )
+    rail_bodies[0].name = "Bottom Rail"
+    rail_bodies[1].name = "Top Rail"
 
 
     # ------------------------------------------------------------------
