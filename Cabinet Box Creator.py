@@ -319,39 +319,51 @@ def build_cabinet(
     feat_right_panel.bodies.item(0).name = "Right Panel"
  
     # ------------------------------------------------------------------
-    # BOTTOM PANEL  (sits between sides, flush with bottom)
-    # Top face at y = T (thickness), so it tucks between the side panels.
+    # BOTTOM PANEL  (flush with bottom of side panels, spans between them)
+    # Sketched on the left panel's inner face, extruded to the right panel's
+    # inner face so the panel tucks cleanly between the two sides.
     # ------------------------------------------------------------------
-    # left_side_body = feat_l.bodies.item(0)
+    left_panel_body = feat_left_panel.bodies.item(0)
+    right_panel_body = feat_right_panel.bodies.item(0)
+    left_panel_inner_face = find_face_by_normal(left_panel_body, 1, 0, 0)
+    right_panel_inner_face = find_face_by_normal(right_panel_body, -1, 0, 0)
 
-    # inner_face = find_face_by_normal(left_side_body, 1, 0, 0)
+    bot_panel_sketch = sketches.add(left_panel_inner_face)
 
-    # face_sketch = sketches.add(inner_face)
-    # min_pt, max_pt = get_face_sketch_bounds(face_sketch, inner_face)
+    # Convert the desired rectangle corners from model space to sketch space —
+    # avoids having to figure out which sketch axis maps to model Y vs Z.
+    face_x = FF_OVERLAP + THICKNESS
+    bot_z = FF_OVERLAP
+    corner_a_model = adsk.core.Point3D.create(face_x, FF_THICK, bot_z)
+    corner_b_model = adsk.core.Point3D.create(face_x, DEPTH,    bot_z + THICKNESS)
+    corner_a = bot_panel_sketch.modelToSketchSpace(corner_a_model)
+    corner_b = bot_panel_sketch.modelToSketchSpace(corner_b_model)
 
-    # lines = face_sketch.sketchCurves.sketchLines
-    # lines.addTwoPointRectangle(
-    #     adsk.core.Point3D.create(min_pt.x, min_pt.y, 0),
-    #     adsk.core.Point3D.create(max_pt.x, min_pt.y + 1.8, 0),
-    # )
+    bot_panel_sketch.sketchCurves.sketchLines.addTwoPointRectangle(
+        adsk.core.Point3D.create(corner_a.x, corner_a.y, 0),
+        adsk.core.Point3D.create(corner_b.x, corner_b.y, 0),
+    )
 
-    # # Get the inner face of the right side (the -X facing face)
-    # right_side_body = feat_r.bodies.item(0)
-    # right_inner_face = find_face_by_normal(right_side_body, -1, 0, 0)
+    # The face's projected edges split the sketch into multiple profiles;
+    # pick the one whose centroid (in model space) has the lowest Z — that's
+    # the bottom strip we just drew.
+    bot_panel_prof = None
+    lowest_z = float('inf')
+    for i in range(bot_panel_sketch.profiles.count):
+        prof = bot_panel_sketch.profiles.item(i)
+        centroid_model = bot_panel_sketch.sketchToModelSpace(prof.areaProperties().centroid)
+        if centroid_model.z < lowest_z:
+            lowest_z = centroid_model.z
+            bot_panel_prof = prof
 
-    # prof = face_sketch.profiles.item(0)
-    # ext_input = extrudes.createInput(
-    #     prof,
-    #     adsk.fusion.FeatureOperations.NewBodyFeatureOperation
-    # )
+    bot_panel_ext_input = extrudes.createInput(
+        bot_panel_prof,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+    )
+    bot_panel_ext_input.setOneSideToExtent(right_panel_inner_face, False)
+    feat_bot_panel = extrudes.add(bot_panel_ext_input)
+    feat_bot_panel.bodies.item(0).name = "Bottom Panel"
 
-    # # Extrude "to object" — terminates exactly at the right side's inner face
-    # ext_input.setOneSideToExtent(right_inner_face, False)
-
-    # feat_b = extrudes.add(ext_input)
-    # feat_b.bodies.item(0).name = "Bottom Panel"
-
-    ################################## 
 
     # ------------------------------------------------------------------
     # TOP PANEL  (between sides, at top)
