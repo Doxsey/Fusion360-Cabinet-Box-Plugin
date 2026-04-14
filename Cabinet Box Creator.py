@@ -265,17 +265,36 @@ def build_cabinet(
     feat_top_rail.bodies.item(0).name = "Top Rail"
 
 
-    
-##################################
+    # ------------------------------------------------------------------
+    # LEFT SIDE  (x=0, full height, full depth)
+    # ------------------------------------------------------------------
+
+    # Sketch the left-side panel footprint on the XY plane (top-down view):
+    #   X: FF_OVERLAP .. FF_OVERLAP + THICKNESS
+    #   Y: FF_THICK   .. DEPTH
+    # Then extrude upward in +Z for height H, starting at Z = FF_OVERLAP.
+    left_panel_sketch = sketch_rect_xy(
+        sketches, xy_plane,
+        FF_OVERLAP,             FF_THICK,
+        FF_OVERLAP + THICKNESS, DEPTH,
+    )
+
+    left_panel_ext_input = extrudes.createInput(
+        left_panel_sketch.profiles.item(0),
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+    )
+    left_panel_ext_input.startExtent = adsk.fusion.OffsetStartDefinition.create(
+        adsk.core.ValueInput.createByReal(FF_OVERLAP)
+    )
+    left_panel_ext_input.setDistanceExtent(
+        False,
+        adsk.core.ValueInput.createByReal(H),
+    )
+
+    feat_left_panel = extrudes.add(left_panel_ext_input)
+    feat_left_panel.bodies.item(0).name = "Left Panel"
 
 
-    # # ------------------------------------------------------------------
-    # # LEFT SIDE  (x=0, full height, full depth)
-    # # ------------------------------------------------------------------
-    # sk_l = sketch_rect_xy(sketches, xy_plane, 0+FF_OVERLAP, 0+FF_THICK, THICKNESS+FF_OVERLAP, DEPTH)
-    # feat_l = extrude_profile(extrudes, sk_l.profiles.item(0), H)
-    # feat_l.bodies.item(0).name = "Left Side"
- 
     # # ------------------------------------------------------------------
     # # RIGHT SIDE  (x = W-THICKNESS, full height, full depth)
     # # ------------------------------------------------------------------
