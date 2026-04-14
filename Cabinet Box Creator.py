@@ -195,6 +195,16 @@ def build_cabinet(
     xy_plane = comp.xYConstructionPlane  # XY → bottom of cabinet
     xz_plane = comp.xZConstructionPlane  # XZ → top-down view (plan)
 
+    # Centerline mirror plane at X = WIDTH/2, reused for all left↔right mirrors.
+    planes = comp.constructionPlanes
+    centerline_input = planes.createInput()
+    centerline_input.setByOffset(
+        comp.yZConstructionPlane,
+        adsk.core.ValueInput.createByReal(WIDTH / 2),
+    )
+    centerline_plane = planes.add(centerline_input)
+    centerline_plane.name = "Cabinet Centerline"
+
     # ------------------------------------------------------------------
     # FACEFRAME - LEFT SIDE STYLE
     # ------------------------------------------------------------------
@@ -203,10 +213,12 @@ def build_cabinet(
     feat_ff_left_style.bodies.item(0).name = "Left Style"
 
     # ------------------------------------------------------------------
-    # FACEFRAME - RIGHT SIDE STYLE
+    # FACEFRAME - RIGHT SIDE STYLE (mirror of left across centerline)
     # ------------------------------------------------------------------
-    sk_ff_right_style = sketch_rect_xy(sketches, xy_plane, WIDTH-FF_WIDTH, 0, WIDTH, FF_THICK)
-    feat_ff_right_style = extrude_profile(extrudes, sk_ff_right_style.profiles.item(0), H+FF_OVERLAP)
+    style_mirror_bodies = adsk.core.ObjectCollection.create()
+    style_mirror_bodies.add(feat_ff_left_style.bodies.item(0))
+    style_mirror_input = comp.features.mirrorFeatures.createInput(style_mirror_bodies, centerline_plane)
+    feat_ff_right_style = comp.features.mirrorFeatures.add(style_mirror_input)
     feat_ff_right_style.bodies.item(0).name = "Right Style"
 
     # ------------------------------------------------------------------
@@ -297,20 +309,10 @@ def build_cabinet(
     # ------------------------------------------------------------------
     # RIGHT SIDE  (mirror of left across cabinet centerline)
     # ------------------------------------------------------------------
-    planes = comp.constructionPlanes
-    plane_input = planes.createInput()
-    plane_input.setByOffset(
-        comp.yZConstructionPlane,
-        adsk.core.ValueInput.createByReal(WIDTH / 2),
-    )
-    mirror_plane = planes.add(plane_input)
-    mirror_plane.name = "Cabinet Centerline"
-
-    mirror_bodies = adsk.core.ObjectCollection.create()
-    mirror_bodies.add(feat_left_panel.bodies.item(0))
-
-    mirror_input = comp.features.mirrorFeatures.createInput(mirror_bodies, mirror_plane)
-    feat_right_panel = comp.features.mirrorFeatures.add(mirror_input)
+    panel_mirror_bodies = adsk.core.ObjectCollection.create()
+    panel_mirror_bodies.add(feat_left_panel.bodies.item(0))
+    panel_mirror_input = comp.features.mirrorFeatures.createInput(panel_mirror_bodies, centerline_plane)
+    feat_right_panel = comp.features.mirrorFeatures.add(panel_mirror_input)
     feat_right_panel.bodies.item(0).name = "Right Panel"
  
     # ------------------------------------------------------------------
