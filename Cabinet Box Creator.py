@@ -319,50 +319,72 @@ def build_cabinet(
     feat_right_panel.bodies.item(0).name = "Right Panel"
  
     # ------------------------------------------------------------------
-    # BOTTOM PANEL  (flush with bottom of side panels, spans between them)
-    # Sketched on the left panel's inner face, extruded to the right panel's
-    # inner face so the panel tucks cleanly between the two sides.
+    # BOTTOM PANEL + 3 SUPPORTS (top-front, top-back, back nailer)
+    # All drawn on the left panel's inner face in one sketch, then extruded
+    # together to the right panel's inner face so every piece tucks cleanly
+    # between the two sides.
     # ------------------------------------------------------------------
+    SUPPORT_WIDTH = inches(4)
+    TOP_Z = FF_OVERLAP + H
+
     left_panel_body = feat_left_panel.bodies.item(0)
     right_panel_body = feat_right_panel.bodies.item(0)
     left_panel_inner_face = find_face_by_normal(left_panel_body, 1, 0, 0)
     right_panel_inner_face = find_face_by_normal(right_panel_body, -1, 0, 0)
 
-    bot_panel_sketch = sketches.add(left_panel_inner_face)
-
-    # Convert the desired rectangle corners from model space to sketch space —
-    # avoids having to figure out which sketch axis maps to model Y vs Z.
+    panels_sketch = sketches.add(left_panel_inner_face)
     face_x = FF_OVERLAP + THICKNESS
-    bot_z = FF_OVERLAP
-    corner_a_model = adsk.core.Point3D.create(face_x, FF_THICK, bot_z)
-    corner_b_model = adsk.core.Point3D.create(face_x, DEPTH,    bot_z + THICKNESS)
-    corner_a = bot_panel_sketch.modelToSketchSpace(corner_a_model)
-    corner_b = bot_panel_sketch.modelToSketchSpace(corner_b_model)
 
-    bot_panel_sketch.sketchCurves.sketchLines.addTwoPointRectangle(
-        adsk.core.Point3D.create(corner_a.x, corner_a.y, 0),
-        adsk.core.Point3D.create(corner_b.x, corner_b.y, 0),
-    )
+    # (name, y0, z0, y1, z1) in model space on the left inner face
+    rect_specs = [
+        ("Bottom Panel",
+            FF_THICK,              FF_OVERLAP,
+            DEPTH,                 FF_OVERLAP + THICKNESS),
+        ("Top Front Stretcher",
+            FF_THICK,              TOP_Z - THICKNESS,
+            FF_THICK + SUPPORT_WIDTH, TOP_Z),
+        ("Top Back Stretcher",
+            DEPTH - SUPPORT_WIDTH, TOP_Z - THICKNESS,
+            DEPTH,                 TOP_Z),
+        ("Back Nailer",
+            DEPTH - THICKNESS,     TOP_Z - THICKNESS - SUPPORT_WIDTH,
+            DEPTH,                 TOP_Z - THICKNESS),
+    ]
 
-    # The face's projected edges split the sketch into multiple profiles;
-    # pick the one whose centroid (in model space) has the lowest Z — that's
-    # the bottom strip we just drew.
-    bot_panel_prof = None
-    lowest_z = float('inf')
-    for i in range(bot_panel_sketch.profiles.count):
-        prof = bot_panel_sketch.profiles.item(i)
-        centroid_model = bot_panel_sketch.sketchToModelSpace(prof.areaProperties().centroid)
-        if centroid_model.z < lowest_z:
-            lowest_z = centroid_model.z
-            bot_panel_prof = prof
+    # Draw all rectangles (model → sketch conversion avoids axis-orientation guesswork)
+    rect_lines = panels_sketch.sketchCurves.sketchLines
+    for _, y0, z0, y1, z1 in rect_specs:
+        p0 = panels_sketch.modelToSketchSpace(adsk.core.Point3D.create(face_x, y0, z0))
+        p1 = panels_sketch.modelToSketchSpace(adsk.core.Point3D.create(face_x, y1, z1))
+        rect_lines.addTwoPointRectangle(
+            adsk.core.Point3D.create(p0.x, p0.y, 0),
+            adsk.core.Point3D.create(p1.x, p1.y, 0),
+        )
 
-    bot_panel_ext_input = extrudes.createInput(
-        bot_panel_prof,
-        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
-    )
-    bot_panel_ext_input.setOneSideToExtent(right_panel_inner_face, False)
-    feat_bot_panel = extrudes.add(bot_panel_ext_input)
-    feat_bot_panel.bodies.item(0).name = "Bottom Panel"
+    # Match each rectangle to a sketch profile by model-space centroid.
+    def _pick_profile(target_y, target_z):
+        best, best_d2 = None, float('inf')
+        for i in range(panels_sketch.profiles.count):
+            prof = panels_sketch.profiles.item(i)
+            c = panels_sketch.sketchToModelSpace(prof.areaProperties().centroid)
+            d2 = (c.y - target_y) ** 2 + (c.z - target_z) ** 2
+            if d2 < best_d2:
+                best_d2 = d2
+                best = prof
+        return best
+
+    # One extrude per profile — adjacent profiles (e.g., Top Back Stretcher and
+    # Back Nailer share an edge) would otherwise merge into a single body when
+    # extruded together.
+    for name, y0, z0, y1, z1 in rect_specs:
+        cy, cz = (y0 + y1) / 2, (z0 + z1) / 2
+        ext_in = extrudes.createInput(
+            _pick_profile(cy, cz),
+            adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+        )
+        ext_in.setOneSideToExtent(right_panel_inner_face, False)
+        feat = extrudes.add(ext_in)
+        feat.bodies.item(0).name = name
 
 
     # ------------------------------------------------------------------
