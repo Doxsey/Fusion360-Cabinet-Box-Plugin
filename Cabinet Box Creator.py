@@ -151,6 +151,52 @@ def get_face_sketch_bounds(
         adsk.core.Point3D.create(max_local.x, max_local.y, 0),
     )
 
+_appearance_cache: dict[str, adsk.core.Appearance] = {}
+
+def get_appearance(design: adsk.fusion.Design, search_terms: list[str]) -> adsk.core.Appearance | None:
+    """
+    Return an appearance in the design whose name contains all search_terms
+    (case-insensitive). If not already in the design, copy it in from the
+    Fusion appearance library. Returns None if nothing matches.
+    """
+    key = "|".join(t.lower() for t in search_terms)
+    if key in _appearance_cache:
+        return _appearance_cache[key]
+
+    def _matches(name: str) -> bool:
+        n = name.lower()
+        return all(t.lower() in n for t in search_terms)
+
+    # First check appearances already in the design
+    for i in range(design.appearances.count):
+        app_item = design.appearances.item(i)
+        if _matches(app_item.name):
+            _appearance_cache[key] = app_item
+            return app_item
+
+    # Otherwise copy from the library
+    app = adsk.core.Application.get()
+    for lib_name in ("Fusion Appearance Library", "Fusion 360 Appearance Library"):
+        lib = app.materialLibraries.itemByName(lib_name)
+        if not lib:
+            continue
+        for i in range(lib.appearances.count):
+            lib_app = lib.appearances.item(i)
+            if _matches(lib_app.name):
+                copied = design.appearances.addByCopy(lib_app, lib_app.name)
+                _appearance_cache[key] = copied
+                return copied
+    return None
+
+
+def apply_appearance(bodies, appearance: adsk.core.Appearance) -> None:
+    """Assign *appearance* to each body in the iterable."""
+    if not appearance:
+        return
+    for body in bodies:
+        body.appearance = appearance
+
+
 def find_face_by_normal(body, nx, ny, nz, tol=0.001):
     for face in body.faces:
         plane = adsk.core.Plane.cast(face.geometry)
@@ -278,6 +324,19 @@ def build_cabinet(
     )
     rail_bodies[0].name = "Bottom Rail"
     rail_bodies[1].name = "Top Rail"
+
+    # Apply ABS (white) appearance to all face-frame bodies
+    design = adsk.fusion.Design.cast(root.parentDesign)
+    abs_white = get_appearance(design, ["ABS", "White"])
+    apply_appearance(
+        [
+            feat_ff_left_style.bodies.item(0),
+            feat_ff_right_style.bodies.item(0),
+            rail_bodies[0],
+            rail_bodies[1],
+        ],
+        abs_white,
+    )
 
 
     # ------------------------------------------------------------------
