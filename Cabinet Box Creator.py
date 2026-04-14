@@ -19,11 +19,12 @@ MM_TO_IN = 1.0 / 25.4   # millimetres → inches
 # Each entry maps a values-dict key to its fixed value in inches.
 # Add new entries here as needed.
 FIXED_VALUES: dict[str, float] = {
-    "Thickness": 18 * MM_TO_IN,      # 18 mm material thickness
+    "Thickness": 18 * MM_TO_IN,       # 18 mm material thickness
     "Depth":     24,                  # 24 inches
     "Height":    30.5,                # 30.5 inches
-    "FaceFrameOverlap": 0.25,         # 0.75 inch face frame overlap on front of box
-    "FaceFrameThickness": 0.75,         # 0.75 inch face frame thickness (extends forward of box)
+    "FaceFrameOverlap": 0.25,         # 0.25 inch face frame overlap on front of box
+    "FaceFrameThickness": 0.75,       # 0.75 inch face frame thickness (extends forward of box)
+    "FaceFrameWidth": 1.5,            # 1.5 inch wide face frame members
 }
 
 
@@ -163,7 +164,7 @@ def find_face_by_normal(body, nx, ny, nz, tol=0.001):
 # ---------------------------------------------------------------------------
 # Main build function
 # ---------------------------------------------------------------------------
- 
+
 def build_cabinet(
     root: adsk.fusion.Component,
     vals: dict,
@@ -180,6 +181,7 @@ def build_cabinet(
     THICKNESS   = inches(vals["Thickness"])
     FF_OVERLAP  = inches(vals["FaceFrameOverlap"])
     FF_THICK = inches(vals["FaceFrameThickness"])
+    FF_WIDTH = inches(vals["FaceFrameWidth"])
 
     # Create a dedicated component for this cabinet
     occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
@@ -192,44 +194,109 @@ def build_cabinet(
     extrudes = comp.features.extrudeFeatures
     xy_plane = comp.xYConstructionPlane  # XY → bottom of cabinet
     xz_plane = comp.xZConstructionPlane  # XZ → top-down view (plan)
+
+    # Build ALL face frame features first, collect them
+    ff_features = adsk.core.ObjectCollection.create()
+
+    # ------------------------------------------------------------------
+    # FACEFRAME - LEFT SIDE STYLE
+    # ------------------------------------------------------------------
+    sk_ff_left_style = sketch_rect_xy(sketches, xy_plane, 0, 0, FF_WIDTH, FF_THICK)
+    feat_ff_left_style = extrude_profile(extrudes, sk_ff_left_style.profiles.item(0), H+FF_OVERLAP)
+    feat_ff_left_style.bodies.item(0).name = "Left Style"
+    ff_features.add(feat_ff_left_style)
+
+    # ------------------------------------------------------------------
+    # FACEFRAME - RIGHT SIDE STYLE
+    # ------------------------------------------------------------------
+    sk_ff_right_style = sketch_rect_xy(sketches, xy_plane, WIDTH-FF_WIDTH, 0, WIDTH, FF_THICK)
+    feat_ff_right_style = extrude_profile(extrudes, sk_ff_right_style.profiles.item(0), H+FF_OVERLAP)
+    feat_ff_right_style.bodies.item(0).name = "Right Style"
+    ff_features.add(feat_ff_right_style)
+
+    # ------------------------------------------------------------------
+    # FACEFRAME - BOTTOM RAIL
+    # ------------------------------------------------------------------
+    left_style = feat_ff_left_style.bodies.item(0)
+    left_style_top_face = find_face_by_normal(left_style, 1, 0, 0)
+    bot_rail_sketch = sketches.add(left_style_top_face)
+    min_pt, max_pt = get_face_sketch_bounds(bot_rail_sketch, left_style_top_face)
+
+    lines = bot_rail_sketch.sketchCurves.sketchLines
+    lines.addTwoPointRectangle(
+        adsk.core.Point3D.create(min_pt.x, min_pt.y, 0),
+        adsk.core.Point3D.create(max_pt.x, min_pt.y + FF_WIDTH, 0),
+    )
+
+
+
+
+
+
+
+
+    # Now create the folder with that collection
+    face_frame_folder = comp.features.folders.addWithRange(
+        ff_features.item(0),   # first feature
+        ff_features.item(ff_features.count - 1)  # last feature
+    )
+    face_frame_folder.name = "Face Frame"
+
+
+    
+##################################
+
+
+    # # ------------------------------------------------------------------
+    # # LEFT SIDE  (x=0, full height, full depth)
+    # # ------------------------------------------------------------------
+    # sk_l = sketch_rect_xy(sketches, xy_plane, 0+FF_OVERLAP, 0+FF_THICK, THICKNESS+FF_OVERLAP, DEPTH)
+    # feat_l = extrude_profile(extrudes, sk_l.profiles.item(0), H)
+    # feat_l.bodies.item(0).name = "Left Side"
  
-    # ------------------------------------------------------------------
-    # LEFT SIDE  (x=0, full height, full depth)
-    # ------------------------------------------------------------------
-    sk_l = sketch_rect_xy(sketches, xy_plane, 0+FF_OVERLAP, 0+FF_THICK, THICKNESS+FF_OVERLAP, DEPTH)
-    feat_l = extrude_profile(extrudes, sk_l.profiles.item(0), H)
-    feat_l.bodies.item(0).name = "Left Side"
- 
-    # ------------------------------------------------------------------
-    # RIGHT SIDE  (x = W-THICKNESS, full height, full depth)
-    # ------------------------------------------------------------------
-    x0 = WIDTH-(FF_OVERLAP*2)-(THICKNESS*2)
-    sk_r = sketch_rect_xy(sketches, xy_plane, x0, 0+FF_THICK, x0+THICKNESS+FF_OVERLAP, DEPTH)
-    feat_r = extrude_profile(extrudes, sk_r.profiles.item(0), H)
-    feat_r.bodies.item(0).name = "Right Side"
+    # # ------------------------------------------------------------------
+    # # RIGHT SIDE  (x = W-THICKNESS, full height, full depth)
+    # # ------------------------------------------------------------------
+    # x0 = WIDTH-(FF_OVERLAP*2)-(THICKNESS*2)
+    # sk_r = sketch_rect_xy(sketches, xy_plane, x0, 0+FF_THICK, x0+THICKNESS+FF_OVERLAP, DEPTH)
+    # feat_r = extrude_profile(extrudes, sk_r.profiles.item(0), H)
+    # feat_r.bodies.item(0).name = "Right Side"
  
     # ------------------------------------------------------------------
     # BOTTOM PANEL  (sits between sides, flush with bottom)
     # Top face at y = T (thickness), so it tucks between the side panels.
     # ------------------------------------------------------------------
-    left_side_body = feat_l.bodies.item(0)
+    # left_side_body = feat_l.bodies.item(0)
 
-    inner_face = find_face_by_normal(left_side_body, 1, 0, 0)
+    # inner_face = find_face_by_normal(left_side_body, 1, 0, 0)
 
-    face_sketch = sketches.add(inner_face)
-    min_pt, max_pt = get_face_sketch_bounds(face_sketch, inner_face)
+    # face_sketch = sketches.add(inner_face)
+    # min_pt, max_pt = get_face_sketch_bounds(face_sketch, inner_face)
 
-    inset = inches(0.5)
-    lines = face_sketch.sketchCurves.sketchLines
-    lines.addTwoPointRectangle(
-        adsk.core.Point3D.create(min_pt.x, min_pt.y, 0),
-        adsk.core.Point3D.create(max_pt.x, min_pt.y + 1.8, 0),
-    )
+    # lines = face_sketch.sketchCurves.sketchLines
+    # lines.addTwoPointRectangle(
+    #     adsk.core.Point3D.create(min_pt.x, min_pt.y, 0),
+    #     adsk.core.Point3D.create(max_pt.x, min_pt.y + 1.8, 0),
+    # )
 
-    # sk_b = sketch_rect_xy(sketches, xy_plane, 0+FF_OVERLAP+THICKNESS, 0+FF_THICK, WIDTH-(FF_OVERLAP*2)-(THICKNESS*2), DEPTH)
-    # feat_b = extrude_profile(extrudes, sk_b.profiles.item(0), THICKNESS)
+    # # Get the inner face of the right side (the -X facing face)
+    # right_side_body = feat_r.bodies.item(0)
+    # right_inner_face = find_face_by_normal(right_side_body, -1, 0, 0)
+
+    # prof = face_sketch.profiles.item(0)
+    # ext_input = extrudes.createInput(
+    #     prof,
+    #     adsk.fusion.FeatureOperations.NewBodyFeatureOperation
+    # )
+
+    # # Extrude "to object" — terminates exactly at the right side's inner face
+    # ext_input.setOneSideToExtent(right_inner_face, False)
+
+    # feat_b = extrudes.add(ext_input)
     # feat_b.bodies.item(0).name = "Bottom Panel"
- 
+
+    ################################## 
+
     # ------------------------------------------------------------------
     # TOP PANEL  (between sides, at top)
     # ------------------------------------------------------------------
