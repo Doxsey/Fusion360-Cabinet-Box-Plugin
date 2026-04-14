@@ -195,16 +195,12 @@ def build_cabinet(
     xy_plane = comp.xYConstructionPlane  # XY → bottom of cabinet
     xz_plane = comp.xZConstructionPlane  # XZ → top-down view (plan)
 
-    # Build ALL face frame features first, collect them
-    ff_features = adsk.core.ObjectCollection.create()
-
     # ------------------------------------------------------------------
     # FACEFRAME - LEFT SIDE STYLE
     # ------------------------------------------------------------------
     sk_ff_left_style = sketch_rect_xy(sketches, xy_plane, 0, 0, FF_WIDTH, FF_THICK)
     feat_ff_left_style = extrude_profile(extrudes, sk_ff_left_style.profiles.item(0), H+FF_OVERLAP)
     feat_ff_left_style.bodies.item(0).name = "Left Style"
-    ff_features.add(feat_ff_left_style)
 
     # ------------------------------------------------------------------
     # FACEFRAME - RIGHT SIDE STYLE
@@ -212,15 +208,14 @@ def build_cabinet(
     sk_ff_right_style = sketch_rect_xy(sketches, xy_plane, WIDTH-FF_WIDTH, 0, WIDTH, FF_THICK)
     feat_ff_right_style = extrude_profile(extrudes, sk_ff_right_style.profiles.item(0), H+FF_OVERLAP)
     feat_ff_right_style.bodies.item(0).name = "Right Style"
-    ff_features.add(feat_ff_right_style)
 
     # ------------------------------------------------------------------
     # FACEFRAME - BOTTOM RAIL
     # ------------------------------------------------------------------
     left_style = feat_ff_left_style.bodies.item(0)
-    left_style_top_face = find_face_by_normal(left_style, 1, 0, 0)
-    bot_rail_sketch = sketches.add(left_style_top_face)
-    min_pt, max_pt = get_face_sketch_bounds(bot_rail_sketch, left_style_top_face)
+    left_style_inner_face = find_face_by_normal(left_style, 1, 0, 0)
+    bot_rail_sketch = sketches.add(left_style_inner_face)
+    min_pt, max_pt = get_face_sketch_bounds(bot_rail_sketch, left_style_inner_face)
 
     lines = bot_rail_sketch.sketchCurves.sketchLines
     lines.addTwoPointRectangle(
@@ -228,19 +223,46 @@ def build_cabinet(
         adsk.core.Point3D.create(max_pt.x, min_pt.y + FF_WIDTH, 0),
     )
 
-
-
-
-
-
-
-
-    # Now create the folder with that collection
-    face_frame_folder = comp.features.folders.addWithRange(
-        ff_features.item(0),   # first feature
-        ff_features.item(ff_features.count - 1)  # last feature
+    right_style = feat_ff_right_style.bodies.item(0)
+    right_style_inner_face = find_face_by_normal(right_style, -1, 0, 0)
+    bot_rail_prof = bot_rail_sketch.profiles.item(0)
+    bot_rail_ext_input = extrudes.createInput(
+        bot_rail_prof,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation
     )
-    face_frame_folder.name = "Face Frame"
+    bot_rail_ext_input.setOneSideToExtent(right_style_inner_face, False)
+
+    feat_bot_rail = extrudes.add(bot_rail_ext_input)
+    feat_bot_rail.bodies.item(0).name = "Bottom Rail"
+
+    # ------------------------------------------------------------------
+    # FACEFRAME - TOP RAIL
+    # ------------------------------------------------------------------
+    top_rail_sketch = sketches.add(left_style_inner_face)
+    min_pt, max_pt = get_face_sketch_bounds(top_rail_sketch, left_style_inner_face)
+    lines = top_rail_sketch.sketchCurves.sketchLines
+    lines.addTwoPointRectangle(
+        adsk.core.Point3D.create(min_pt.x, max_pt.y - FF_WIDTH, 0),
+        adsk.core.Point3D.create(max_pt.x, max_pt.y, 0),
+    )
+
+    # Pick the profile whose centroid Y is highest (closest to top of face)
+    top_rail_prof = None
+    highest_y = -float('inf')
+    for i in range(top_rail_sketch.profiles.count):
+        prof = top_rail_sketch.profiles.item(i)
+        centroid = prof.areaProperties().centroid
+        if centroid.y > highest_y:
+            highest_y = centroid.y
+            top_rail_prof = prof
+
+    top_rail_ext_input = extrudes.createInput(
+        top_rail_prof,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation
+    )
+    top_rail_ext_input.setOneSideToExtent(right_style_inner_face, False)
+    feat_top_rail = extrudes.add(top_rail_ext_input)
+    feat_top_rail.bodies.item(0).name = "Top Rail"
 
 
     
