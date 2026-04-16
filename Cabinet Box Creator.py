@@ -20,6 +20,14 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
+# Fusion keeps sys.modules across script runs within one Fusion session. That
+# means edits to our packages (new builder modules, registry changes) would be
+# ignored — the cached package object is reused. Purge our packages so each
+# run re-executes the imports from disk.
+for _mod_name in [name for name in sys.modules if name == "lib" or name == "builders"
+                  or name.startswith("lib.") or name.startswith("builders.")]:
+    del sys.modules[_mod_name]
+
 from builders import BUILDERS, DEFAULT_KEY  # noqa: E402
 
 CMD_ID = "CabinetBoxCreatorCmd"
