@@ -17,6 +17,8 @@ FRAME_WIDTH_IN     = 2.5
 FRAME_THICKNESS_IN = 0.75
 PANEL_THICKNESS_IN = 0.5
 PANEL_OFFSET_IN    = 0.25
+GROOVE_DEPTH_IN    = 0.375
+GROOVE_WIDTH_IN    = 0.25
 
 DEFAULTS = {
     "Width":  24.0,
@@ -77,4 +79,6 @@ def build(design: adsk.fusion.Design, cmd_inputs: adsk.core.CommandInputs, ui: a
         frame_thickness_in=FRAME_THICKNESS_IN,
         panel_thickness_in=PANEL_THICKNESS_IN,
         panel_offset_in=PANEL_OFFSET_IN,
+        groove_depth_in=GROOVE_DEPTH_IN,
+        groove_width_in=GROOVE_WIDTH_IN,
     )
