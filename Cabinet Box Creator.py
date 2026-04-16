@@ -435,6 +435,7 @@ def build_cabinet(
     # One extrude per profile — adjacent profiles (e.g., Top Back Stretcher and
     # Back Nailer share an edge) would otherwise merge into a single body when
     # extruded together.
+    support_bodies = []
     for name, y0, z0, y1, z1 in rect_specs:
         cy, cz = (y0 + y1) / 2, (z0 + z1) / 2
         ext_in = extrudes.createInput(
@@ -443,7 +444,16 @@ def build_cabinet(
         )
         ext_in.setOneSideToExtent(right_panel_inner_face, False)
         feat = extrudes.add(ext_in)
-        feat.bodies.item(0).name = name
+        body = feat.bodies.item(0)
+        body.name = name
+        support_bodies.append(body)
+
+    # Apply Oak Semigloss appearance to the side panels and all support boards
+    oak_semigloss = get_appearance(design, ["Oak", "Semigloss"])
+    apply_appearance(
+        [feat_left_panel.bodies.item(0), feat_right_panel.bodies.item(0), *support_bodies],
+        oak_semigloss,
+    )
 
 
     # ------------------------------------------------------------------
