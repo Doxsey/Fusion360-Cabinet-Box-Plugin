@@ -14,13 +14,14 @@ Add a new part type by creating a module that implements the above and
 registering it in BUILDERS below.
 """
 
-from builders import base_cabinet, upper_cabinet, drawer_box, door
+from builders import base_cabinet, upper_cabinet, drawer_box, drawer_front, doors
 
 BUILDERS = {
     base_cabinet.KEY: base_cabinet,
     upper_cabinet.KEY: upper_cabinet,
     drawer_box.KEY: drawer_box,
-    door.KEY: door,
+    drawer_front.KEY: drawer_front,
+    doors.KEY: doors,
 }
 
 DEFAULT_KEY = base_cabinet.KEY
