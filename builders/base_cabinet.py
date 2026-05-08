@@ -99,25 +99,33 @@ def _build_cabinet(root: adsk.fusion.Component, vals: dict) -> adsk.fusion.Compo
         f"Cabinet_{vals['Width']:.4g}x{vals['Height']:.4g}x{vals['Depth']:.4g}"
     )
 
-    sketches = comp.sketches
-    extrudes = comp.features.extrudeFeatures
-    xy_plane = comp.xYConstructionPlane
+    # The cabinet component is a wrapper holding two sub-assemblies (Face
+    # Frame, Carcass); each owns its own sketches/features/centerline.
 
-    # Centerline mirror plane at X = WIDTH/2, reused for all left↔right mirrors.
-    planes = comp.constructionPlanes
-    centerline_input = planes.createInput()
-    centerline_input.setByOffset(
-        comp.yZConstructionPlane,
+    # ------------------------------------------------------------------
+    # FACE FRAME — own sub-component with its own mirror centerline so the
+    # 4 frame pieces are self-contained and can be hidden/replaced as a unit.
+    # ------------------------------------------------------------------
+    ff_occ = comp.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+    ff_comp = ff_occ.component
+    ff_comp.name = "Face Frame"
+
+    ff_sketches = ff_comp.sketches
+    ff_extrudes = ff_comp.features.extrudeFeatures
+    ff_xy_plane = ff_comp.xYConstructionPlane
+
+    ff_planes = ff_comp.constructionPlanes
+    ff_centerline_input = ff_planes.createInput()
+    ff_centerline_input.setByOffset(
+        ff_comp.yZConstructionPlane,
         adsk.core.ValueInput.createByReal(WIDTH / 2),
     )
-    centerline_plane = planes.add(centerline_input)
-    centerline_plane.name = "Cabinet Centerline"
+    ff_centerline_plane = ff_planes.add(ff_centerline_input)
+    ff_centerline_plane.name = "Face Frame Centerline"
 
-    # ------------------------------------------------------------------
-    # FACEFRAME - LEFT SIDE STYLE
-    # ------------------------------------------------------------------
-    sk_ff_left_style = sketch_rect_xy(sketches, xy_plane, 0, 0, FF_WIDTH, FF_THICK)
-    ff_left_ext_input = extrudes.createInput(
+    # LEFT STYLE
+    sk_ff_left_style = sketch_rect_xy(ff_sketches, ff_xy_plane, 0, 0, FF_WIDTH, FF_THICK)
+    ff_left_ext_input = ff_extrudes.createInput(
         sk_ff_left_style.profiles.item(0),
         adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
     )
@@ -125,27 +133,23 @@ def _build_cabinet(root: adsk.fusion.Component, vals: dict) -> adsk.fusion.Compo
         False,
         adsk.core.ValueInput.createByReal(H + FF_OVERLAP),
     )
-    feat_ff_left_style = extrudes.add(ff_left_ext_input)
+    feat_ff_left_style = ff_extrudes.add(ff_left_ext_input)
     feat_ff_left_style.bodies.item(0).name = "Left Style"
 
-    # ------------------------------------------------------------------
-    # FACEFRAME - RIGHT SIDE STYLE (mirror of left across centerline)
-    # ------------------------------------------------------------------
+    # RIGHT STYLE (mirror across face frame centerline)
     style_mirror_bodies = adsk.core.ObjectCollection.create()
     style_mirror_bodies.add(feat_ff_left_style.bodies.item(0))
-    style_mirror_input = comp.features.mirrorFeatures.createInput(style_mirror_bodies, centerline_plane)
-    feat_ff_right_style = comp.features.mirrorFeatures.add(style_mirror_input)
+    style_mirror_input = ff_comp.features.mirrorFeatures.createInput(style_mirror_bodies, ff_centerline_plane)
+    feat_ff_right_style = ff_comp.features.mirrorFeatures.add(style_mirror_input)
     feat_ff_right_style.bodies.item(0).name = "Right Style"
 
-    # ------------------------------------------------------------------
-    # FACEFRAME - TOP & BOTTOM RAILS (one sketch, one extrude, two bodies)
-    # ------------------------------------------------------------------
+    # TOP & BOTTOM RAILS (one sketch, one extrude, two bodies)
     left_style = feat_ff_left_style.bodies.item(0)
     left_style_inner_face = find_face_by_normal(left_style, 1, 0, 0)
     right_style = feat_ff_right_style.bodies.item(0)
     right_style_inner_face = find_face_by_normal(right_style, -1, 0, 0)
 
-    rails_sketch = sketches.add(left_style_inner_face)
+    rails_sketch = ff_sketches.add(left_style_inner_face)
     min_pt, max_pt = get_face_sketch_bounds(rails_sketch, left_style_inner_face)
 
     rails_lines = rails_sketch.sketchCurves.sketchLines
@@ -178,12 +182,12 @@ def _build_cabinet(root: adsk.fusion.Component, vals: dict) -> adsk.fusion.Compo
     rail_profs.add(bot_rail_prof)
     rail_profs.add(top_rail_prof)
 
-    rails_ext_input = extrudes.createInput(
+    rails_ext_input = ff_extrudes.createInput(
         rail_profs,
         adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
     )
     rails_ext_input.setOneSideToExtent(right_style_inner_face, False)
-    feat_rails = extrudes.add(rails_ext_input)
+    feat_rails = ff_extrudes.add(rails_ext_input)
 
     rail_bodies = sorted(
         (feat_rails.bodies.item(i) for i in range(feat_rails.bodies.count)),
@@ -203,6 +207,27 @@ def _build_cabinet(root: adsk.fusion.Component, vals: dict) -> adsk.fusion.Compo
         ],
         abs_white,
     )
+
+    # ------------------------------------------------------------------
+    # CARCASS — own sub-component containing both side panels, the bottom
+    # panel, and the three supports. Owns its own mirror centerline.
+    # ------------------------------------------------------------------
+    c_occ = comp.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+    c_comp = c_occ.component
+    c_comp.name = "Carcass"
+
+    sketches = c_comp.sketches
+    extrudes = c_comp.features.extrudeFeatures
+    xy_plane = c_comp.xYConstructionPlane
+
+    c_planes = c_comp.constructionPlanes
+    c_centerline_input = c_planes.createInput()
+    c_centerline_input.setByOffset(
+        c_comp.yZConstructionPlane,
+        adsk.core.ValueInput.createByReal(WIDTH / 2),
+    )
+    centerline_plane = c_planes.add(c_centerline_input)
+    centerline_plane.name = "Carcass Centerline"
 
     # ------------------------------------------------------------------
     # LEFT SIDE  (x=0, full height, full depth)
@@ -233,8 +258,8 @@ def _build_cabinet(root: adsk.fusion.Component, vals: dict) -> adsk.fusion.Compo
     # ------------------------------------------------------------------
     panel_mirror_bodies = adsk.core.ObjectCollection.create()
     panel_mirror_bodies.add(feat_left_panel.bodies.item(0))
-    panel_mirror_input = comp.features.mirrorFeatures.createInput(panel_mirror_bodies, centerline_plane)
-    feat_right_panel = comp.features.mirrorFeatures.add(panel_mirror_input)
+    panel_mirror_input = c_comp.features.mirrorFeatures.createInput(panel_mirror_bodies, centerline_plane)
+    feat_right_panel = c_comp.features.mirrorFeatures.add(panel_mirror_input)
     feat_right_panel.bodies.item(0).name = "Right Panel"
 
     # ------------------------------------------------------------------
