@@ -340,7 +340,7 @@ def _build_cabinet(root: adsk.fusion.Component, vals: dict) -> adsk.fusion.Compo
             FFO + T/2,        FFO + T,
             W - FFO - T/2,    FFO + 2*T,
             FFT,              D),
-        ("Back Nailer",
+        ("Top Nailer",
             FFO + T,          H - 2*T - NW,
             W - FFO - T,      H - 2*T,
             D - T,            D),
