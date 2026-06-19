@@ -1,20 +1,26 @@
 """Drawer box builder — Blum TANDEM undermount drawer box.
 
 Sized from the cabinet opening per the Blum TANDEM front-view spec:
-the inside drawer width MUST equal the opening width minus 49 mm for the
-slides to align. Construction:
+the inside drawer width MUST equal the opening width minus a fixed
+deduction for the slides to align. Two TANDEM slide models are supported,
+selected by drawer-side material:
+
+  - 3/4" (18 mm) sides → inside width = opening - 49 mm
+  - 1/2" (13 mm) sides → inside width = opening - 42 mm
+
+Construction (identical for both):
 
   - Two sides run the full 21" depth (fixed). The front and back fit
-    BETWEEN the sides, so each is `inside_width` (= opening - 49) long.
-    Outside box width = inside_width + 2·T = opening - 13 mm.
+    BETWEEN the sides, so each is `inside_width` long.
+    Outside box width = inside_width + 2·T.
   - The drawer bottom sits in a dado cut on the inner face of all four
     pieces. The dado is half the side-material thickness deep (9 mm for
-    18 mm stock) and as wide as the bottom panel. Its lower shoulder is
-    the 13 mm "bottom recess" above the bottom edge of the sides.
+    18 mm stock, 6.5 mm for 13 mm) and as wide as the bottom panel. Its
+    lower shoulder is the 13 mm "bottom recess" above the bottom edge.
+  - Two rear notches in the back panel clear the slide locking mechanism.
 
-Only 3/4" (treated as 18 mm) stock is wired up for now; 1/2" (13 mm) will
-be added later by parameterising MATERIAL_THICKNESS_MM. User inputs are
-just opening width and box (side) height — depth is fixed.
+User inputs are opening width, box (side) height, and material; depth is
+fixed.
 
 Orientation (matches the rest of the project):
   X = width   (left to right)
@@ -32,15 +38,19 @@ KEY = "drawer_box"
 DISPLAY_NAME = "Drawer Box"
 GROUP_ID = "drawer_box_group"
 
-# Material — 3/4" nominal stock treated as 18 mm internally. The drawer
-# bottom uses the same stock, which sets the dado width.
-MATERIAL_THICKNESS_MM = 18.0
-DRAWER_BOTTOM_THICKNESS_MM = 18.0
+# Material options. Each Blum TANDEM slide model pairs a maximum drawer-
+# side thickness with a fixed inside-width deduction (opening - deduction).
+# The drawer bottom uses the same stock, which sets the dado width; the
+# dado is half the side thickness deep.
+MATERIALS = {
+    "3/4": {"label": '3/4" (18 mm)', "thickness_mm": 18.0, "bottom_mm": 18.0, "deduction_mm": 49.0},
+    "1/2": {"label": '1/2" (13 mm)', "thickness_mm": 13.0, "bottom_mm": 13.0, "deduction_mm": 42.0},
+}
+DEFAULT_MATERIAL = "3/4"
 
-# Blum TANDEM fixed dimensions.
+# Blum TANDEM fixed dimensions (shared across materials).
 DRAWER_DEPTH_IN = 21.0           # fixed for now
 BOTTOM_RECESS_MM = 13.0          # underside of bottom panel above side bottom
-TANDEM_WIDTH_DEDUCTION_MM = 49.0  # inside width = opening - 49
 
 # Rear notches in the back panel that clear the slide locking mechanism.
 # Blum's spec is 35 mm (1-3/8") minimum wide; we use 1.5". The 13 mm height
@@ -66,6 +76,12 @@ def define_inputs(inputs: adsk.core.CommandInputs) -> adsk.core.GroupCommandInpu
     ci.addValueInput("db_opening_width", "Opening Width", "in", _in_value(DEFAULTS["OpeningWidth"]))
     ci.addValueInput("db_box_height",    "Box Height",    "in", _in_value(DEFAULTS["BoxHeight"]))
 
+    material_dd = ci.addDropDownCommandInput(
+        "db_material", "Material", adsk.core.DropDownStyles.TextListDropDownStyle
+    )
+    for key, mat in MATERIALS.items():
+        material_dd.listItems.add(mat["label"], key == DEFAULT_MATERIAL, "")
+
     return group
 
 
@@ -73,23 +89,30 @@ def _collect_values(cmd_inputs: adsk.core.CommandInputs) -> dict:
     def _val_in(id_: str) -> float:
         return cmd_inputs.itemById(id_).value / IN_TO_CM  # cm -> inches
 
+    material_dd = adsk.core.DropDownCommandInput.cast(cmd_inputs.itemById("db_material"))
+    sel_label = material_dd.selectedItem.name
+    material_key = next(k for k, m in MATERIALS.items() if m["label"] == sel_label)
+
     return {
         "OpeningWidth": _val_in("db_opening_width"),
         "BoxHeight":    _val_in("db_box_height"),
+        "Material":     material_key,
     }
 
 
 def build(design: adsk.fusion.Design, cmd_inputs: adsk.core.CommandInputs, ui: adsk.core.UserInterface) -> None:
     vals = _collect_values(cmd_inputs)
+    mat = MATERIALS[vals["Material"]]
+    deduction_mm = mat["deduction_mm"]
 
     opening_mm = vals["OpeningWidth"] / MM_TO_IN     # inches -> mm
     height_mm = vals["BoxHeight"] / MM_TO_IN
 
-    inside_w_mm = opening_mm - TANDEM_WIDTH_DEDUCTION_MM
+    inside_w_mm = opening_mm - deduction_mm
     if inside_w_mm <= 0:
         ui.messageBox(
-            f'Opening Width must be greater than {TANDEM_WIDTH_DEDUCTION_MM:.0f} mm '
-            f'({TANDEM_WIDTH_DEDUCTION_MM * MM_TO_IN:.3g}") so the inside width is positive.',
+            f'Opening Width must be greater than {deduction_mm:.0f} mm '
+            f'({deduction_mm * MM_TO_IN:.3g}") so the inside width is positive.',
             DISPLAY_NAME,
         )
         return
@@ -102,7 +125,7 @@ def build(design: adsk.fusion.Design, cmd_inputs: adsk.core.CommandInputs, ui: a
         )
         return
 
-    min_h_mm = BOTTOM_RECESS_MM + DRAWER_BOTTOM_THICKNESS_MM
+    min_h_mm = BOTTOM_RECESS_MM + mat["bottom_mm"]
     if height_mm <= min_h_mm:
         ui.messageBox(
             f'Box Height must be greater than {min_h_mm:.0f} mm '
@@ -117,14 +140,15 @@ def build(design: adsk.fusion.Design, cmd_inputs: adsk.core.CommandInputs, ui: a
 def _build_box(design: adsk.fusion.Design, vals: dict) -> adsk.fusion.Component:
     """Build the five drawer-box bodies inside a new child component."""
     root = design.rootComponent
+    mat = MATERIALS[vals["Material"]]
 
     # All lengths in cm (Fusion internal units).
-    T     = mm(MATERIAL_THICKNESS_MM)          # side / front / back thickness
-    BT    = mm(DRAWER_BOTTOM_THICKNESS_MM)     # bottom thickness == dado width
-    DD    = mm(MATERIAL_THICKNESS_MM / 2.0)    # dado depth (half material)
+    T     = mm(mat["thickness_mm"])            # side / front / back thickness
+    BT    = mm(mat["bottom_mm"])               # bottom thickness == dado width
+    DD    = mm(mat["thickness_mm"] / 2.0)      # dado depth (half material)
     REC   = mm(BOTTOM_RECESS_MM)               # dado lower shoulder height
     DEPTH = inches(DRAWER_DEPTH_IN)
-    IW    = inches(vals["OpeningWidth"]) - mm(TANDEM_WIDTH_DEDUCTION_MM)  # inside width
+    IW    = inches(vals["OpeningWidth"]) - mm(mat["deduction_mm"])  # inside width
     OW    = IW + 2 * T                          # outside width
     H     = inches(vals["BoxHeight"])
 
@@ -133,7 +157,8 @@ def _build_box(design: adsk.fusion.Design, vals: dict) -> adsk.fusion.Component:
 
     occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
     comp = occ.component
-    comp.name = f"DrawerBox_{vals['OpeningWidth']:.4g}x{vals['BoxHeight']:.4g}"
+    nominal = vals["Material"].replace("/", "-")
+    comp.name = f"DrawerBox_{nominal}_{vals['OpeningWidth']:.4g}x{vals['BoxHeight']:.4g}"
 
     sketches = comp.sketches
     extrudes = comp.features.extrudeFeatures
